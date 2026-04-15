@@ -11,6 +11,7 @@ When a user selects text containing a monetary value with currency marker (for e
 4. Shows the result in a tooltip near the selected text.
 
 The target currency is configurable and persisted in userscript storage.
+Selection can come from regular page text and, when enabled, from `input`/`textarea` fields.
 
 ## 2. Code Review Summary (Revision Notes)
 
@@ -46,18 +47,22 @@ This provides a reusable installation/update template through a GitHub repositor
 
 ### 3.2 Persistent User Configuration
 
-The script stores target currency with:
+The script stores user settings with:
 
-- Key: `target_currency`
+- Keys:
+  - `target_currency`
+  - `enable_input_selection_support`
 - API:
   - `GM_getValue(...)` for load
   - `GM_setValue(...)` for save
-- Default value: `USD`
+- Defaults:
+  - target currency: `USD`
+  - input/textarea selection support: `true`
 
 Tampermonkey menu commands:
 
 1. `Set target currency` - prompt-based setting update.
-2. `Show current target currency` - quick check of current value.
+2. `Toggle input/textarea selection support` - switches ON/OFF behavior for typed text fields.
 
 Supported values are validated against a fixed allow-list:
 `USD`, `EUR`, `UAH`, `PLN`, `GBP`, `JPY`, `CAD`, `AUD`, `CHF`.
@@ -76,6 +81,7 @@ Detection logic uses:
    - rejects invalid numeric strings safely.
 
 This improves reliability across common regional number formats.
+Maximum processed selection length is controlled by `MAX_SELECTION_LENGTH` (currently `40`).
 
 ### 3.4 Exchange Rate Layer
 
@@ -111,6 +117,19 @@ UI behavior:
    - selection collapse,
    - page scroll,
    - window blur.
+
+### 3.7 Selection Sources and Feature Flag
+
+The script normalizes selection handling through a unified context layer:
+
+1. Regular DOM selection (`window.getSelection()`).
+2. Input selection (`selectionStart`/`selectionEnd`) for `input` and `textarea`.
+
+This behavior is controlled by a persisted boolean setting:
+
+- `enable_input_selection_support` (default: `true`).
+
+When this setting is OFF, the script processes only regular page text selections and ignores selections in form fields.
 
 ## 4. Git/GitHub Installation Template
 

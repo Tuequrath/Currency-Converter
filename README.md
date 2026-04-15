@@ -18,9 +18,15 @@ Tampermonkey/Violentmonkey userscript that converts selected prices into your pr
 
 Use Tampermonkey menu commands:
 - `Set target currency`
-- `Show current target currency`
+- `Toggle input/textarea selection support`
 
 Supported target currencies: `USD`, `EUR`, `UAH`, `PLN`, `GBP`, `JPY`, `CAD`, `AUD`, `CHF`.
+
+## Selection Behavior
+
+- Searching window is set to `40` characters.
+- Input/textarea selection support is enabled by default and can be switched ON/OFF from the Tampermonkey menu.
+- This setting is persisted in userscript storage.
 
 ## Details
 

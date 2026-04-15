@@ -3,7 +3,7 @@
 // @namespace    https://github.com/Tuequrath/Currency-Converter
 // @version      1.3.0
 // @description  Converts selected monetary amounts to a user-selected target currency.
-// @author       YOUR_NAME
+// @author       Tuequrath
 // @match        *://*/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_getValue
@@ -19,7 +19,12 @@
 
     const DEFAULT_TARGET_CURRENCY = 'USD';
     const TARGET_CURRENCY_STORAGE_KEY = 'target_currency';
-    const MAX_SELECTION_LENGTH = 120;
+    const INPUT_SELECTION_SUPPORT_STORAGE_KEY = 'enable_input_selection_support';
+    const MAX_SELECTION_LENGTH = 40;
+    const DEFAULT_ENABLE_INPUT_SELECTION_SUPPORT = true;
+    const TEXT_INPUT_TYPES = Object.freeze([
+        'text', 'search', 'url', 'tel', 'password', 'email'
+    ]);
 
     const SUPPORTED_TARGET_CURRENCIES = Object.freeze([
         'USD', 'EUR', 'UAH', 'PLN', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF'
@@ -28,11 +33,11 @@
     // Tokens include both code-like values and common symbols.
     const CURRENCY_ALIASES = Object.freeze({
         USD: ['usd', '$', 'us$'],
-        EUR: ['eur', 'в‚¬'],
-        UAH: ['uah', 'в‚ґ', 'РіСЂРЅ'],
-        PLN: ['pln', 'zЕ‚', 'zl'],
-        GBP: ['gbp', 'ВЈ'],
-        JPY: ['jpy', 'ВҐ'],
+        EUR: ['eur', '€'],
+        UAH: ['uah', '₴', 'грн'],
+        PLN: ['pln', 'zł', 'zl'],
+        GBP: ['gbp', '£'],
+        JPY: ['jpy', '¥'],
         CAD: ['cad', 'c$'],
         AUD: ['aud', 'a$'],
         CHF: ['chf']
@@ -42,23 +47,36 @@
     const CURRENCY_REGEX = buildCurrencyRegex(Object.keys(TOKEN_TO_CODE));
 
     let targetCurrency = loadTargetCurrency();
+    let enableInputSelectionSupport = loadInputSelectionSupport();
     let tooltipElement = null;
     let ratesCache = null;
+    let ratesPromise = null;
+    let suppressedSelectionSignature = null;
+    let lastMouseupPoint = null;
 
     registerMenuCommands();
 
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (event) => {
+        lastMouseupPoint = { x: event.clientX, y: event.clientY };
         void handleSelection();
     });
     document.addEventListener('mousedown', (event) => {
+        const context = getSelectionContext();
+        suppressedSelectionSignature = context ? context.signature : null;
         if (tooltipElement && event.target !== tooltipElement) {
             hideTooltip();
         }
     });
     document.addEventListener('selectionchange', () => {
-        const selection = window.getSelection();
-        if (!selection || selection.isCollapsed) {
+        const context = getSelectionContext();
+        if (!context) {
+            suppressedSelectionSignature = null;
             hideTooltip();
+            return;
+        }
+
+        if (suppressedSelectionSignature && context.signature !== suppressedSelectionSignature) {
+            suppressedSelectionSignature = null;
         }
     });
     window.addEventListener('scroll', hideTooltip, true);
@@ -95,6 +113,11 @@
         return SUPPORTED_TARGET_CURRENCIES.includes(saved) ? saved : DEFAULT_TARGET_CURRENCY;
     }
 
+    function loadInputSelectionSupport() {
+        const saved = GM_getValue(INPUT_SELECTION_SUPPORT_STORAGE_KEY, DEFAULT_ENABLE_INPUT_SELECTION_SUPPORT);
+        return saved === true;
+    }
+
     function registerMenuCommands() {
         GM_registerMenuCommand('Set target currency', () => {
             const current = targetCurrency;
@@ -118,19 +141,27 @@
             alert(`Target currency saved: ${normalized}`);
         });
 
-        GM_registerMenuCommand('Show current target currency', () => {
-            alert(`Current target currency: ${targetCurrency}`);
+        GM_registerMenuCommand('Toggle input/textarea selection support', () => {
+            enableInputSelectionSupport = !enableInputSelectionSupport;
+            GM_setValue(INPUT_SELECTION_SUPPORT_STORAGE_KEY, enableInputSelectionSupport);
+            alert(`Input/textarea selection support: ${enableInputSelectionSupport ? 'ON' : 'OFF'}`);
         });
+
     }
 
     async function handleSelection() {
-        const selection = window.getSelection();
-        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+        const context = getSelectionContext();
+        if (!context) {
             hideTooltip();
             return;
         }
 
-        const text = selection.toString().trim();
+        if (suppressedSelectionSignature && suppressedSelectionSignature === context.signature) {
+            hideTooltip();
+            return;
+        }
+
+        const text = context.text;
         if (!text || text.length > MAX_SELECTION_LENGTH) {
             hideTooltip();
             return;
@@ -148,14 +179,25 @@
             return;
         }
 
+        // Selection can change while awaiting rates; re-check before showing UI.
+        const updatedContext = getSelectionContext();
+        if (!updatedContext) {
+            hideTooltip();
+            return;
+        }
+
+        if (updatedContext.signature !== context.signature) {
+            hideTooltip();
+            return;
+        }
+
         const converted = convertAmount(detected.value, detected.currency, targetCurrency, rates);
         if (converted === null) {
             hideTooltip();
             return;
         }
 
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
+        const rect = resolveTooltipAnchorRect(updatedContext);
         if (!rect || (rect.width === 0 && rect.height === 0)) {
             hideTooltip();
             return;
@@ -163,7 +205,111 @@
 
         const originalText = formatAmount(detected.value, detected.currency);
         const convertedText = formatAmount(converted, targetCurrency);
-        showTooltip(`${originalText} в‰€ ${convertedText}`, rect);
+        showTooltip(`${originalText} ≈ ${convertedText}`, rect);
+    }
+
+    function getSelectionContext() {
+        if (enableInputSelectionSupport) {
+            const inputContext = getInputSelectionContext();
+            if (inputContext) {
+                return inputContext;
+            }
+        }
+        return getPageSelectionContext();
+    }
+
+    function getPageSelectionContext() {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed || selection.rangeCount === 0) {
+            return null;
+        }
+
+        const text = selection.toString().trim();
+        if (!text) {
+            return null;
+        }
+
+        try {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            const signature = `page|${text}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`;
+            return { source: 'page', text, rect, signature };
+        } catch {
+            return null;
+        }
+    }
+
+    function getInputSelectionContext() {
+        const activeElement = document.activeElement;
+        if (!activeElement) {
+            return null;
+        }
+
+        const isTextArea = activeElement instanceof HTMLTextAreaElement;
+        const isTextInput = activeElement instanceof HTMLInputElement
+            && TEXT_INPUT_TYPES.includes((activeElement.type || 'text').toLowerCase());
+
+        if (!isTextArea && !isTextInput) {
+            return null;
+        }
+
+        const start = activeElement.selectionStart;
+        const end = activeElement.selectionEnd;
+        if (!Number.isInteger(start) || !Number.isInteger(end) || start === end) {
+            return null;
+        }
+
+        const text = activeElement.value.slice(start, end).trim();
+        if (!text) {
+            return null;
+        }
+
+        const rect = activeElement.getBoundingClientRect();
+        const signature = `input|${text}|${start}|${end}|${Math.round(rect.left)}|${Math.round(rect.top)}|${Math.round(rect.width)}|${Math.round(rect.height)}`;
+        return { source: 'input', text, rect, signature };
+    }
+
+    function resolveTooltipAnchorRect(context) {
+        if (!context) {
+            return null;
+        }
+
+        if (context.source !== 'input') {
+            return context.rect;
+        }
+
+        const inputRect = context.rect;
+        if (!inputRect) {
+            return null;
+        }
+
+        if (lastMouseupPoint
+            && lastMouseupPoint.x >= inputRect.left
+            && lastMouseupPoint.x <= inputRect.right
+            && lastMouseupPoint.y >= inputRect.top
+            && lastMouseupPoint.y <= inputRect.bottom) {
+            const x = lastMouseupPoint.x;
+            const y = lastMouseupPoint.y;
+            return {
+                left: x,
+                right: x + 1,
+                top: y,
+                bottom: y + 1,
+                width: 1,
+                height: 1
+            };
+        }
+
+        const x = inputRect.left + Math.min(inputRect.width / 2, 120);
+        const y = inputRect.top + Math.min(inputRect.height / 2, 20);
+        return {
+            left: x,
+            right: x + 1,
+            top: y,
+            bottom: y + 1,
+            width: 1,
+            height: 1
+        };
     }
 
     function detectCurrency(text) {
@@ -248,15 +394,18 @@
     }
 
     function getRates() {
-        return new Promise((resolve) => {
-            if (ratesCache) {
-                resolve(ratesCache);
-                return;
-            }
+        if (ratesCache) {
+            return Promise.resolve(ratesCache);
+        }
+        if (ratesPromise) {
+            return ratesPromise;
+        }
 
+        ratesPromise = new Promise((resolve) => {
             GM_xmlhttpRequest({
                 method: 'GET',
                 url: 'https://open.er-api.com/v6/latest/USD',
+                timeout: 10000,
                 onload: (response) => {
                     if (response.status < 200 || response.status >= 300) {
                         resolve(null);
@@ -276,9 +425,14 @@
                         resolve(null);
                     }
                 },
-                onerror: () => resolve(null)
+                onerror: () => resolve(null),
+                ontimeout: () => resolve(null)
             });
+        }).finally(() => {
+            ratesPromise = null;
         });
+
+        return ratesPromise;
     }
 
     function showTooltip(text, rect) {
