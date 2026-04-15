@@ -2,6 +2,8 @@
 
 Tampermonkey/Violentmonkey userscript that converts selected prices into your preferred target currency.
 
+**[Install Userscript](https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js)**
+
 ## Quick Start
 
 1. Clone the repository:
@@ -12,7 +14,7 @@ Tampermonkey/Violentmonkey userscript that converts selected prices into your pr
    - `@author`
 3. Push to GitHub.
 4. Install from the raw URL in your userscript manager:
-   [https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js](https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js)
+   https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js
 
 ## User Setting
 
