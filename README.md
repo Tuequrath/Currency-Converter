@@ -12,7 +12,7 @@ Tampermonkey/Violentmonkey userscript that converts selected prices into your pr
    - `@author`
 3. Push to GitHub.
 4. Install from the raw URL in your userscript manager:
-   `https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js`
+   [https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js](https://raw.githubusercontent.com/Tuequrath/Currency-Converter/main/currency-converter.user.js)
 
 ## User Setting
 
@@ -31,4 +31,3 @@ Supported target currencies: `USD`, `EUR`, `UAH`, `PLN`, `GBP`, `JPY`, `CAD`, `A
 ## Details
 
 See `PROJECT.md` for technical architecture and implementation details.
-
